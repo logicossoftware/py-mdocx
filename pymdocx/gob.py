@@ -660,14 +660,20 @@ class GobDecoder:
             raise EOFError("Unexpected end of gob data")
         
         content_reader = BytesIO(content)
-        
-        # Read type ID from content
-        first = content_reader.read(1)[0]
+
+        # Read type ID from content (gob int encoded, zigzag decoded)
+        b0 = content_reader.read(1)
+        if not b0:
+            raise EOFError("Unexpected end of gob message")
+        first = b0[0]
         if first <= 127:
             u = first
         else:
             n = 256 - first
-            u = int.from_bytes(content_reader.read(n), 'big')
+            raw = content_reader.read(n)
+            if len(raw) != n:
+                raise EOFError("Unexpected end of gob message")
+            u = int.from_bytes(raw, 'big')
         
         # Zigzag decode
         if u & 1:

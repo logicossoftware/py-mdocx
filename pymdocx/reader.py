@@ -198,6 +198,11 @@ class MDOCXReader:
                 f"Reserved1 must be 0, got {(reserved1_high << 32) | reserved1_low}"
             )
         
+        # Validate header flags (reject unknown bits)
+        allowed_header_flags = int(HeaderFlags.METADATA_JSON)
+        if header_flags & ~allowed_header_flags:
+            raise MDOCXFormatError(f"Unknown header flags set: 0x{header_flags:04x}")
+
         return version, HeaderFlags(header_flags), metadata_length
     
     def _read_metadata(
@@ -217,7 +222,7 @@ class MDOCXReader:
             try:
                 obj = json.loads(data.decode('utf-8'))
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                raise MDOCXFormatError(f"Invalid metadata JSON: {e}")
+                raise MDOCXFormatError(f"Invalid metadata JSON: {e}") from e
             
             if not isinstance(obj, dict):
                 raise MDOCXFormatError("Metadata JSON must be an object")
@@ -255,12 +260,49 @@ class MDOCXReader:
         if reserved != 0:
             raise MDOCXFormatError(f"Section reserved field must be 0, got {reserved}")
         
+        # Validate flags (reject unknown bits)
+        allowed_section_flags = int(SectionFlags.COMPRESSION_MASK | SectionFlags.HAS_UNCOMPRESSED_LEN)
+        if section_flags & ~allowed_section_flags:
+            raise MDOCXFormatError(f"Unknown section flags set: 0x{section_flags:04x}")
+
+        # Determine compression method
+        compression_value = section_flags & SectionFlags.COMPRESSION_MASK
+        try:
+            compression = CompressionMethod(compression_value)
+        except ValueError as e:
+            raise MDOCXFormatError(f"Unknown compression method: {compression_value}") from e
+        has_uncompressed_len = bool(section_flags & SectionFlags.HAS_UNCOMPRESSED_LEN)
+
         # Handle empty payload (allowed for media section)
         if payload_len == 0:
             if expected_type == SectionType.MEDIA:
                 return MediaBundle()
             else:
                 raise MDOCXFormatError("Markdown section payload cannot be empty")
+
+        # Basic payload length guardrails to avoid attempting gigantic reads.
+        # For COMP_NONE, payload length must fit within the configured uncompressed limit.
+        # For compressed payloads, allow small overhead beyond (8-byte prefix + expected max uncompressed).
+        if compression == CompressionMethod.NONE:
+            if has_uncompressed_len:
+                raise MDOCXFormatError(
+                    "HAS_UNCOMPRESSED_LEN must not be set for COMP_NONE"
+                )
+            if payload_len > max_uncompressed:
+                raise MDOCXFormatError(
+                    f"Section payload length {payload_len} exceeds maximum {max_uncompressed}"
+                )
+        else:
+            if not has_uncompressed_len:
+                raise MDOCXFormatError(
+                    "HAS_UNCOMPRESSED_LEN must be set for compressed sections"
+                )
+            # 8 bytes for uncompressed length prefix + modest overhead for container/headers.
+            max_payload_len = 8 + max_uncompressed + (64 * 1024)
+            if payload_len > max_payload_len:
+                raise MDOCXFormatError(
+                    f"Compressed payload length {payload_len} exceeds maximum {max_payload_len}"
+                )
         
         # Read payload
         payload = stream.read(payload_len)
@@ -268,27 +310,11 @@ class MDOCXReader:
             raise MDOCXFormatError(
                 f"Incomplete section payload: expected {payload_len} bytes, got {len(payload)}"
             )
-        
-        # Determine compression method
-        compression_value = section_flags & SectionFlags.COMPRESSION_MASK
-        try:
-            compression = CompressionMethod(compression_value)
-        except ValueError:
-            raise MDOCXFormatError(f"Unknown compression method: {compression_value}")
-        has_uncompressed_len = bool(section_flags & SectionFlags.HAS_UNCOMPRESSED_LEN)
-        
+
         # Decompress if needed
         if compression == CompressionMethod.NONE:
-            if has_uncompressed_len:
-                raise MDOCXFormatError(
-                    "HAS_UNCOMPRESSED_LEN must not be set for COMP_NONE"
-                )
             gob_data = payload
         else:
-            if not has_uncompressed_len:
-                raise MDOCXFormatError(
-                    "HAS_UNCOMPRESSED_LEN must be set for compressed sections"
-                )
             
             # Extract uncompressed length prefix
             if len(payload) < 8:
@@ -311,13 +337,13 @@ class MDOCXReader:
                     max_uncompressed,
                 )
             except CompressionError as e:
-                raise MDOCXFormatError(f"Decompression failed: {e}")
+                raise MDOCXFormatError(f"Decompression failed: {e}") from e
         
         # Decode gob payload
         try:
             return decoder(gob_data)
         except Exception as e:
-            raise MDOCXFormatError(f"Gob decoding failed: {e}")
+            raise MDOCXFormatError(f"Gob decoding failed: {e}") from e
 
 
 class MDOCXDocument:
