@@ -630,6 +630,8 @@ class GobDecoder:
                 # Go encodes [N]uint8 as: length (uint), followed by N uint values
                 # Each uint8 value is encoded: 0-127 as single byte, 128-255 as 0xff + byte
                 length = self._read_uint()
+                if length != 32:
+                    raise ValueError(f"SHA256 array must have 32 elements, got {length}")
                 sha256_bytes = []
                 for _ in range(length):
                     sha256_bytes.append(self._read_uint())

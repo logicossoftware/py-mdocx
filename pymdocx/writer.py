@@ -52,8 +52,8 @@ class MDOCXWriter:
             markdown_compression: Override compression for markdown section
             media_compression: Override compression for media section
         """
-        self.markdown_compression = markdown_compression or compression
-        self.media_compression = media_compression or compression
+        self.markdown_compression = markdown_compression if markdown_compression is not None else compression
+        self.media_compression = media_compression if media_compression is not None else compression
     
     def write(
         self,

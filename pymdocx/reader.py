@@ -270,7 +270,11 @@ class MDOCXReader:
             )
         
         # Determine compression method
-        compression = CompressionMethod(section_flags & SectionFlags.COMPRESSION_MASK)
+        compression_value = section_flags & SectionFlags.COMPRESSION_MASK
+        try:
+            compression = CompressionMethod(compression_value)
+        except ValueError:
+            raise MDOCXFormatError(f"Unknown compression method: {compression_value}")
         has_uncompressed_len = bool(section_flags & SectionFlags.HAS_UNCOMPRESSED_LEN)
         
         # Decompress if needed
