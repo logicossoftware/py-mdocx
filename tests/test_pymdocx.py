@@ -315,6 +315,39 @@ class TestWriterReader:
         assert root is not None
         assert root.path == "docs/main.md"
 
+    def test_list_contents(self):
+        """Test listing contents of an MDOCX document."""
+        md_bundle = MarkdownBundle(
+            root_path="index.md",
+            files=[
+                MarkdownFile.from_string("index.md", "# Index"),
+                MarkdownFile.from_string("docs/intro.md", "# Intro"),
+            ],
+        )
+        media_bundle = MediaBundle(items=[
+            MediaItem(
+                id="logo",
+                path="assets/logo.png",
+                mime_type="image/png",
+                data=b"\x89PNG\r\n\x1a\n" + b"x" * 10,
+            ),
+        ])
+
+        writer = MDOCXWriter()
+        data = writer.to_bytes(md_bundle, media_bundle)
+
+        reader = MDOCXReader()
+        doc = reader.read_from_bytes(data)
+
+        contents = doc.list_contents()
+
+        assert contents["root"] == "index.md"
+        assert len(contents["markdown"]) == 2
+        assert {m["path"] for m in contents["markdown"]} == {"index.md", "docs/intro.md"}
+        assert len(contents["media"]) == 1
+        assert contents["media"][0]["id"] == "logo"
+        assert contents["media"][0]["size"] > 0
+
 
 class TestCompression:
     """Tests for compression support."""

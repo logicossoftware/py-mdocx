@@ -109,6 +109,14 @@ for item in doc.media_bundle.items:
 media = doc.resolve_media_uri("mdocx://media/logo")
 if media:
     print(f"Found media: {len(media.data)} bytes")
+
+# List contents (paths, sizes, metadata)
+contents = doc.list_contents()
+print("Root:", contents["root"])
+for item in contents["markdown"]:
+    print("MD:", item["path"], item["size"])
+for item in contents["media"]:
+    print("Media:", item["id"], item["path"], item["size"])
 ```
 
 ## Compression Options

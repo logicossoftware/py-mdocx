@@ -418,3 +418,47 @@ class MDOCXDocument:
             return self.get_media_by_id(media_id)
         else:
             return self.get_media_by_path(uri)
+
+    def list_contents(self) -> dict:
+        """
+        List contents of the MDOCX document.
+
+        Returns:
+            dict with keys:
+              - "markdown": list of markdown file entries
+              - "media": list of media item entries
+              - "root": resolved root markdown path (or None)
+        """
+        root_file = self.get_root_file()
+        root_path = root_file.path if root_file else None
+
+        markdown_entries = []
+        for md_file in self.markdown_bundle.files:
+            markdown_entries.append(
+                {
+                    "path": md_file.path,
+                    "size": len(md_file.content),
+                    "media_refs": list(md_file.media_refs),
+                    "attributes": dict(md_file.attributes),
+                }
+            )
+
+        media_entries = []
+        for item in self.media_bundle.items:
+            sha256_hex = item.sha256.hex() if item.sha256 else ""
+            media_entries.append(
+                {
+                    "id": item.id,
+                    "path": item.path,
+                    "mime_type": item.mime_type,
+                    "size": len(item.data),
+                    "sha256": sha256_hex,
+                    "attributes": dict(item.attributes),
+                }
+            )
+
+        return {
+            "markdown": markdown_entries,
+            "media": media_entries,
+            "root": root_path,
+        }
