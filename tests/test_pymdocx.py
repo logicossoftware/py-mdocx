@@ -5,6 +5,7 @@ Tests for pymdocx package.
 import pytest
 import hashlib
 from io import BytesIO
+import struct
 
 from pymdocx import (
     MarkdownBundle,
@@ -14,14 +15,43 @@ from pymdocx import (
     Metadata,
     MDOCXReader,
     MDOCXWriter,
+    MDOCXFormatError,
     CompressionMethod,
+    MAGIC,
+    VERSION,
+    SectionType,
 )
+from pymdocx.constants import SectionFlags
 from pymdocx.gob import (
     encode_markdown_bundle,
     decode_markdown_bundle,
     encode_media_bundle,
     decode_media_bundle,
 )
+
+
+def _fixed_header(*, header_flags: int = 0, metadata_length: int = 0) -> bytes:
+    return struct.pack(
+        '<8sHHIIIII',
+        MAGIC,
+        VERSION,
+        header_flags,
+        32,
+        metadata_length,
+        0,
+        0,
+        0,
+    )
+
+
+def _section_header(*, section_type: SectionType, section_flags: int, payload_len: int) -> bytes:
+    return struct.pack(
+        '<HHQI',
+        int(section_type),
+        int(section_flags),
+        payload_len,
+        0,
+    )
 
 
 class TestModels:
@@ -345,6 +375,60 @@ class TestCompression:
         doc = reader.read_from_bytes(data)
         
         assert doc.markdown_bundle.files[0].content_str == "# Test\n" * 1000
+
+
+class TestMalformedInputs:
+    def test_rejects_unknown_header_flags(self):
+        data = _fixed_header(header_flags=0x8000)
+        reader = MDOCXReader()
+
+        with pytest.raises(MDOCXFormatError, match="Unknown header flags"):
+            reader.read_from_bytes(data)
+
+    def test_rejects_unknown_section_flags(self):
+        data = _fixed_header() + _section_header(
+            section_type=SectionType.MARKDOWN,
+            section_flags=0x0020,  # unknown bit
+            payload_len=1,
+        )
+        reader = MDOCXReader()
+
+        with pytest.raises(MDOCXFormatError, match="Unknown section flags"):
+            reader.read_from_bytes(data)
+
+    def test_rejects_unknown_compression_method(self):
+        data = _fixed_header() + _section_header(
+            section_type=SectionType.MARKDOWN,
+            section_flags=int(SectionFlags.HAS_UNCOMPRESSED_LEN) | 0x0005,  # compression id 5 is undefined
+            payload_len=1,
+        )
+        reader = MDOCXReader()
+
+        with pytest.raises(MDOCXFormatError, match="Unknown compression method"):
+            reader.read_from_bytes(data)
+
+    def test_payload_len_guardrail_for_uncompressed_section(self):
+        reader = MDOCXReader(max_markdown_uncompressed=16)
+        data = _fixed_header() + _section_header(
+            section_type=SectionType.MARKDOWN,
+            section_flags=0,
+            payload_len=17,
+        )
+
+        with pytest.raises(MDOCXFormatError, match="exceeds maximum"):
+            reader.read_from_bytes(data)
+
+    def test_truncated_gob_payload_is_format_error(self):
+        payload = b"\x01"  # valid uint length prefix, but truncated message body
+        data = _fixed_header() + _section_header(
+            section_type=SectionType.MARKDOWN,
+            section_flags=0,
+            payload_len=len(payload),
+        ) + payload
+
+        reader = MDOCXReader()
+        with pytest.raises(MDOCXFormatError, match="Gob decoding failed"):
+            reader.read_from_bytes(data)
 
 
 if __name__ == "__main__":

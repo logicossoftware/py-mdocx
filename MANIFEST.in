@@ -1,0 +1,4 @@
+include README.md
+include LICENSE
+include rfc.md
+recursive-include test_suite *.mdocx *.json
