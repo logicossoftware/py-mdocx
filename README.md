@@ -2,24 +2,26 @@
 
 Python implementation of the MDOCX (MarkDown Open Container eXchange) file format.
 
+PyPI (v0.1.0): https://pypi.org/project/logicossoftware-mdocx/0.1.0/
+
 MDOCX is a single-file container format for bundling one or more Markdown documents with associated binary media (images, audio, video, etc.), suitable for exchange, archival, and transport.
 
 ## Installation
 
 ```bash
-pip install pymdocx
+pip install logicossoftware-mdocx
 ```
 
 ### Optional compression support
 
 ```bash
 # Install with all compression algorithms
-pip install pymdocx[all]
+pip install logicossoftware-mdocx[all]
 
 # Or install individual compression libraries
-pip install pymdocx[zstd]   # Zstandard (recommended)
-pip install pymdocx[lz4]    # LZ4 (fast)
-pip install pymdocx[brotli] # Brotli (high compression)
+pip install logicossoftware-mdocx[zstd]   # Zstandard (recommended)
+pip install logicossoftware-mdocx[lz4]    # LZ4 (fast)
+pip install logicossoftware-mdocx[brotli] # Brotli (high compression)
 ```
 
 ## Quick Start
